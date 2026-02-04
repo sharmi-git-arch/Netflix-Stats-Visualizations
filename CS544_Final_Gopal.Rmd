@@ -1,0 +1,511 @@
+---
+title: "Statistical Analysis and Visualization of Netflix"
+subtitle: "CS544 Term Project Presentation (Prof. Kalathur, Fall 2025)"
+author: "Sharmila Gopal"
+date: "October 15th, 2025"
+output:
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_float: true
+    number_sections: true
+---
+
+## Dataset Description
+
+The Netflix dataset contains information about movies and TV shows available on Netflix. It includes details such as release year, ratings, duration, genres, directors, cast, and countries of production. This dataset is suitable for univariate, bivariate, and multivariate analysis, as well as sampling and demonstrating statistical concepts.
+
+### Key Columns
+
+- `show_id` : Unique identifier for each title.  
+- `type` : Type of content (Movie or TV Show).  
+- `title` : Name of the movie or TV show.  
+- `director` : Director(s) of the title.  
+- `cast` : Main cast members.  
+- `country` : Country of production.  
+- `date_added` : Date when the title was added to Netflix.  
+- `release_year` : Original release year of the title.  
+- `rating` : Age-based rating of the content (e.g., PG, TV-MA).  
+- `duration` : Duration of the title (minutes for movies, seasons for TV shows).  
+- `listed_in` : Genre(s) or categories of the title.  
+- `description` : Brief summary of the content.  
+
+This dataset allows you to explore patterns such as the distribution of movies vs TV shows, trends in release years, ratings by type, genre popularity, and more.
+```{r setup, include=FALSE}
+# Global settings — hide all code, warnings, and messages
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE
+)
+
+# Load required libraries
+library(readr)
+library(dplyr)
+library(tidyr)
+library(plotly)
+library(knitr)
+library(kableExtra)
+library(DT)
+library(htmltools)
+library(ggplot2)
+```
+```{r data_import}
+# Load dataset
+netflix <- read_csv("C:/Users/sharm/Downloads/archive (2)/netflix_titles.csv")
+
+# Clean dataset
+netflix_clean <- netflix %>%
+  mutate(date_added = as.Date(date_added, format = "%B %d, %Y")) %>%
+  mutate(across(where(is.character), ~replace_na(., "Unknown")))
+```
+```{r dataset snapshot}
+# Select key columns
+netflix_key <- netflix_clean %>%
+  select(show_id, type, title, release_year, rating, duration, country)
+
+# Wrap DT table in a bordered div (no duplicate)
+div(
+  style = "border: 1px solid #ccc; padding: 5px; border-radius: 5px;",
+  datatable(
+    netflix_key,
+    options = list(
+      pageLength = 5,
+      lengthMenu = c(5, 10, 25, 50, 100),
+      scrollX = TRUE,
+      autoWidth = TRUE,
+      paging = TRUE,
+      searching = TRUE,
+      info = TRUE
+    ),
+    rownames = FALSE,
+    caption = "Interactive Netflix Dataset (Key Columns, Paginated, Bordered)",
+    class = "cell-border stripe hover"
+  )
+)
+```
+## Objectives
+
+The main objectives of this project are to answer the following questions:
+
+1. Which types of content (Movies vs TV Shows) dominate Netflix’s catalog, and how has this changed over the years?  
+2. Are there patterns in release years, ratings, or durations across different types of content?  
+3. What genres are the most and least common on Netflix?  
+4. How do ratings vary by type, genre, or country of production?  
+5. Are there relationships between release year, rating, and type of content?  
+6. How complete is the dataset, and how should missing values be handled?  
+7. Can sampling or statistical methods, such as the Central Limit Theorem, be demonstrated using Netflix data?  
+
+
+```{r Missing Values Summary}
+missing_values <- colSums(is.na(netflix_clean))
+```
+
+```{r duration_numeric_conversion}
+# Convert duration to numeric for movies and TV shows
+netflix_clean <- netflix_clean %>%
+  mutate(duration_num = ifelse(
+    grepl("Season", duration),
+    as.numeric(gsub(" Season[s]?", "", duration)) * 45,  # 1 season ≈ 45 mins
+    as.numeric(gsub("[^0-9]", "", duration))
+  )) %>%
+  filter(!is.na(duration_num))
+```
+## Univariate Analysis (Categorical Variable)
+
+**Objective:** Examine the distribution of a single categorical variable to understand its frequency and patterns.
+
+**Variable:** `type` (Movie or TV Show)
+
+We analyze the `type` variable to understand the composition of Netflix content. By counting the number of Movies vs TV Shows, we can determine which type of content dominates the platform. A bar chart visualizes the frequency distribution.
+
+```{r Univariate Analysis}
+type_count <- netflix_clean %>% count(type)
+
+plot_ly(type_count, x = ~type, y = ~n, type = 'bar', color = ~type) %>%
+  layout(
+    title = list(text = "Count of Movies vs TV Shows", x = 0.5), # Center title
+    xaxis = list(title = "Type"),
+    yaxis = list(title = "Count"),
+    margin = list(l = 60, r = 40, t = 80, b = 60), # Increase top margin for title
+    autosize = TRUE
+  )
+```
+## Univariate Analysis: Numerical Variables
+
+
+**Objective:** Examine numerical variables to understand central tendency, spread, distribution, and demonstrate the Central Limit Theorem (CLT) using random sampling.
+
+**Variables:**  
+- `release_year` → overview of release trends  
+- `duration_num` → detailed distribution and CLT demonstration  
+
+```{r univariate_distribution, echo=FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(plotly)
+library(knitr)
+
+# --- Step 1: Prepare duration as numeric ---
+netflix_clean <- netflix_clean %>%
+  mutate(duration_num = ifelse(
+    grepl("Season", duration),
+    as.numeric(gsub(" Season[s]?", "", duration)) * 45,  # approximate 1 season = 45 mins
+    as.numeric(gsub("[^0-9]", "", duration))
+  )) %>%
+  filter(!is.na(duration_num))
+
+# --- Step 2: Summary statistics for duration ---
+summary_stats <- netflix_clean %>%
+  summarise(
+    count = n(),
+    mean_duration = mean(duration_num),
+    median_duration = median(duration_num),
+    sd_duration = sd(duration_num),
+    min_duration = min(duration_num),
+    max_duration = max(duration_num)
+  )
+
+kable(summary_stats, caption = "Summary Statistics of Duration (Minutes)")
+
+# --- Step 3: Histogram for release_year ---
+p1 <- plot_ly(netflix_clean, x = ~release_year, type = 'histogram') %>%
+  layout(
+    title = list(text = "Distribution of Release Years", x = 0.5),
+    xaxis = list(title = "Release Year"),
+    yaxis = list(title = "Count")
+  )
+
+# --- Step 4: Histogram for duration_num ---
+p2 <- plot_ly(netflix_clean, x = ~duration_num, type = 'histogram') %>%
+  layout(
+    title = list(text = "Distribution of Duration (Minutes)", x = 0.5),
+    xaxis = list(title = "Duration (Minutes)"),
+    yaxis = list(title = "Count")
+  )
+
+# --- Step 5: CLT demonstration for duration ---
+set.seed(123)
+sample_means <- replicate(1000, mean(sample(netflix_clean$duration_num, 30, replace = TRUE)))
+
+p3 <- plot_ly(x = sample_means, type = 'histogram') %>%
+  layout(
+    title = list(text = "Central Limit Theorem: Sampling Distribution of Means", x = 0.5),
+    xaxis = list(title = "Sample Means of Duration"),
+    yaxis = list(title = "Frequency")
+  )
+
+# --- Step 6: Combine plots vertically ---
+subplot(p1, p2, p3, nrows = 3, shareX = FALSE, titleY = TRUE)
+```
+## Bivariate Analysis (Two Variables)
+
+**Objective:** Explore relationships between two variables to understand patterns or differences.
+
+**Variables:** `type` (categorical) vs `release_year` (numerical)
+
+We analyze the relationship between `type` and `release_year` using a box plot. This shows how release years are distributed for Movies vs TV Shows, allowing us to observe differences in trends between the two content types over time.
+
+```{r Bivariate Analysis}
+plot_ly(netflix_clean, x = ~type, y = ~release_year, type = 'box', color = ~type) %>%
+  layout(
+    title = list(text = "Release Year Distribution by Type"),
+    xaxis = list(title = "Type"),
+    yaxis = list(title = "Release Year")
+  )
+```
+## Multivariate Analysis (More than Two Variables)
+
+**Objective:** Examine interactions between multiple variables simultaneously to uncover complex patterns.
+
+**Variables:** `release_year` (numerical), `rating` (categorical), `type` (categorical)
+
+We explore how `release_year` and `rating` interact across content `type`. A scatter plot colored by `type` helps visualize the distribution of ratings over the years for Movies and TV Shows, highlighting patterns in ratings across different types of content.
+
+```{r Multivariate Analysis}
+library(plotly)
+
+# Define consistent colors
+color_map <- c("Movie" = "tomato", "TV Show" = "limegreen")
+
+plot_ly(netflix_clean,
+        x = ~release_year,
+        y = ~rating,
+        color = ~type,
+        colors = color_map,
+        size = ~duration_num,
+        text = ~paste("Title:", title, "<br>Duration:", duration_num, "mins"),
+        hoverinfo = "text",
+        type = 'scatter',
+        mode = 'markers',
+        marker = list(sizemode='diameter', sizeref=2, opacity=0.7)) %>%
+  layout(title = "Release Year vs Rating by Type with Duration",
+         xaxis = list(title = "Release Year"),
+         yaxis = list(title = "Rating"),
+         legend = list(title=list(text='Content Type')))
+```
+
+## Distribution & Central Limit Theorem (CLT)
+
+In this section, we examine the distribution of the `duration_num` variable (duration of Netflix shows in minutes) and demonstrate the Central Limit Theorem (CLT) using random sampling.
+
+1. **Distribution of Duration**  
+   First, we visualize the distribution of the original duration data to understand its shape and spread. This helps identify if the data is skewed, uniform, or approximately normal.
+
+2. **Sampling & CLT**  
+   We then draw 1000 random samples of size 30 each from the `duration_num` data, calculate the mean of each sample, and plot the distribution of these sample means. According to the Central Limit Theorem, regardless of the shape of the original data, the distribution of sample means should approximate a normal distribution when the sample size is sufficiently large.
+
+This analysis demonstrates how the CLT allows us to make inferences about the population mean using sample means.
+
+
+---
+
+## Interactive Plotly histogram
+
+```{r }
+set.seed(123)
+sample_means <- replicate(1000, mean(sample(netflix_clean$duration_num, 30, replace = TRUE)))
+
+# CLT plot with normal curve
+clt_plot <- ggplot(data.frame(sample_means), aes(x = sample_means)) +
+  geom_histogram(aes(y = ..density..), bins = 30, fill = 'skyblue', color = 'black', alpha = 0.7) +
+  stat_function(fun = dnorm, args = list(mean = mean(sample_means), sd = sd(sample_means)),
+                color = 'red', size = 1.2) +
+  labs(title = "CLT: Sampling Distribution of Duration Means",
+       x = "Sample Means of Duration", y = "Density") +
+  theme_minimal()
+
+# Convert to interactive Plotly
+p3 <- ggplotly(clt_plot)
+
+# DISPLAY the plot
+p3
+```
+## Sampling Methods
+
+In this section, we demonstrate three different sampling techniques applied to the Netflix dataset — **Random Sampling**, **Stratified Sampling**, and **Systematic Sampling**.  
+Sampling allows us to analyze subsets of data efficiently when working with large datasets, while still drawing conclusions that reflect the population trends.
+
+---
+
+###  Sampling
+
+**Description:**  
+Random sampling selects a fixed number of records completely at random from the dataset. Each observation has an equal chance of being chosen, making it an unbiased technique. However, it may not always represent all categories if the sample size is small.
+
+```{r random_sampling, echo=FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(knitr)
+
+# Random Sampling: Select 50 random records
+random_sample <- netflix_clean %>% sample_n(50)
+
+# Display the first few rows of the random sample
+kable(
+  head(random_sample %>% select(type, title, release_year), 3),
+  caption = "Random Sample (Preview: 3 Records, Key Columns)"
+)
+```
+
+### Stratified Sampling by Type
+
+**Description:**  
+Stratified sampling divides the dataset into groups (or strata) based on a categorical variable — here, `type` (Movie or TV Show).  
+Then, a fixed fraction is sampled from each stratum to maintain proportional representation.  
+This ensures that all groups are represented in the sample, reducing bias in datasets with uneven category sizes.
+```{r stratified_sampling, echo=FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(knitr)
+
+# Stratified Sampling: Take 10% of data from each 'type' group (Movie/TV Show)
+strat_sample <- netflix_clean %>%
+  group_by(type) %>%
+  sample_frac(0.1)
+
+# Display first 3 rows and key columns only
+kable(
+  head(strat_sample %>% select(type, title, release_year, rating), 3),
+  caption = "Stratified Sample by Type (10%) - Preview of Key Columns"
+)
+```
+
+### Systematic Sampling
+
+**Description:**  
+Systematic sampling selects data points at regular intervals (for example, every 10th row).  
+It is simple to perform and ensures even coverage of the dataset.  
+However, if the data has a hidden pattern or periodicity, this method may introduce bias and fail to represent the dataset accurately.
+
+```{r systematic_sampling, echo=FALSE, message=FALSE, warning=FALSE}
+## Sampling Type Distribution Plots
+
+library(dplyr)
+library(plotly)
+
+# Random sample type distribution
+p_random <- netflix_clean %>% sample_n(50) %>%
+  count(type) %>%
+  plot_ly(x=~type, y=~n, type='bar', color=~type, colors=color_map) %>%
+  layout(title="Random Sampling: Type Distribution",
+         xaxis=list(title="Type"), yaxis=list(title="Count"))
+
+# Stratified sample type distribution
+p_strat <- netflix_clean %>%
+  group_by(type) %>%
+  sample_frac(0.1) %>%
+  count(type) %>%
+  plot_ly(x=~type, y=~n, type='bar', color=~type, colors=color_map) %>%
+  layout(title="Stratified Sampling (10%): Type Distribution",
+         xaxis=list(title="Type"), yaxis=list(title="Count"))
+
+# Systematic sample type distribution
+p_sys <- netflix_clean[seq(1, nrow(netflix_clean), by=10), ] %>%
+  count(type) %>%
+  plot_ly(x=~type, y=~n, type='bar', color=~type, colors=color_map) %>%
+  layout(title="Systematic Sampling (Every 10th): Type Distribution",
+         xaxis=list(title="Type"), yaxis=list(title="Count"))
+
+# Combine vertically
+subplot(p_random, p_strat, p_sys, nrows=3, shareX=FALSE, titleY=TRUE)
+```
+### Summary of Sampling Techniques
+
+- **Random Sampling:**  
+  Simple and unbiased, but might miss less frequent categories if they occur rarely in the dataset.
+
+- **Stratified Sampling:**  
+  Preserves proportions across categories (e.g., Movies vs TV Shows), providing better representation for each group — especially useful when categories are unevenly distributed.
+
+- **Systematic Sampling:**  
+  Easy to perform and ensures regular selection across the dataset. However, it may miss important patterns if the data has underlying cycles or periodic trends.
+
+**Overall Conclusion:**  
+All three sampling techniques are valuable depending on the analysis goal:  
+- When categories are balanced, **random sampling** is generally sufficient.  
+- For datasets with uneven category sizes, **stratified sampling** offers the most reliable representation.
+
+## Data Wrangling and Summary Statistics
+
+**Description:**  
+In this section, we apply *data wrangling* techniques such as grouping, summarization, and arrangement to analyze trends in the dataset.  
+Specifically, we calculate the **average duration** of titles by `country` and `type` (Movies or TV Shows).  
+This helps identify which countries produce longer or shorter content on average and how many titles each contributes.
+
+```{r data_wrangling_summary, echo=FALSE, message=FALSE, warning=FALSE}
+# Ensure 'duration_num' is numeric
+netflix_clean <- netflix_clean %>%
+  mutate(duration_num = as.numeric(gsub(" min", "", duration)))
+
+# Summarize average duration and count by country and type
+netflix_summary <- netflix_clean %>%
+  group_by(country, type) %>%
+  summarise(
+    avg_duration = mean(duration_num, na.rm = TRUE),
+    count = n()
+  ) %>%
+  arrange(desc(count))
+
+# Display top 10 results in a compact table with thin borders
+## Data Wrangling and Summary Statistics
+
+library(DT)
+
+# Ensure numeric duration
+netflix_clean <- netflix_clean %>%
+  mutate(duration_num = ifelse(
+    grepl("Season", duration),
+    as.numeric(gsub(" Season[s]?", "", duration)) * 45,
+    as.numeric(gsub("[^0-9]", "", duration))
+  ))
+
+# Summarize
+netflix_summary <- netflix_clean %>%
+  group_by(country, type) %>%
+  summarise(
+    avg_duration = mean(duration_num, na.rm = TRUE),
+    count = n()
+  ) %>%
+  arrange(desc(count))
+
+# Well-formatted interactive table with aligned columns
+datatable(
+  netflix_summary %>%
+    mutate(avg_duration = round(avg_duration, 1)),   # round for readability
+  options = list(
+    pageLength = 5,
+    lengthMenu = c(5, 10, 25, 50),
+    autoWidth = FALSE,   # turn off auto width for better alignment
+    scrollX = TRUE,
+    columnDefs = list(
+      list(className = 'dt-left', targets = c(0, 1)),   # left align text columns
+      list(className = 'dt-right', targets = c(2, 3)),  # right align numeric columns
+      list(width = '160px', targets = 0),               # fixed width for country
+      list(width = '100px', targets = 1),               # fixed width for type
+      list(width = '120px', targets = 2),               # fixed width for avg_duration
+      list(width = '80px', targets = 3)                 # fixed width for count
+    )
+  ),
+  rownames = FALSE,
+  caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: center; font-weight: bold;',
+    "Top Countries by Content Count and Average Duration (Interactive Table)"
+  )
+)
+
+```
+## Findings
+
+### Summary of Insights
+
+1. **Content Composition:** Movies dominate the catalog, while TV Shows form a smaller but notable portion.  
+2. **Release Trends:** Most titles were added after 2010, showing rapid content growth.  
+3. **Country Distribution:** USA contributes the most titles, followed by India and the UK.  
+4. **Duration and Type:** Movies range from <60 to >180 minutes; TV Shows mostly indicate seasons.  
+5. **Univariate Insights:** `release_year` is right-skewed; `type` and `rating` show clear audience patterns.  
+6. **Bivariate/Multivariate:** Movies generally have shorter durations; scatter plots show clustering by `type`.  
+7. **CLT Verification:** Sampling `duration_num` confirms a normal sampling distribution, illustrating the CLT.  
+8. **Sampling Methods:** Random: unbiased; Stratified: preserves proportions; Systematic: simple, may introduce bias.  
+9. **Data Wrangling:** Average movie duration per country/type highlights regional differences.  
+10. **Overall:** Netflix shows strong content diversity and growth; sampling and CLT concepts are well-demonstrated.
+
+---
+
+### Limitations and Future Work
+
+- Some variables like `duration` are inconsistent (minutes vs seasons), requiring data transformation before statistical comparison.
+- Genre (`listed_in`) is a multi-valued categorical field, limiting certain analyses.
+- Future work could include:
+  - Sentiment analysis on `description` using text mining.
+  - Trend forecasting on Netflix releases over time.
+  - Correlation between genre, rating, and content popularity.
+
+---
+
+### Visualization Summary
+
+Below is an optional interactive Plotly visualization summarizing average movie duration by country and type.
+
+```{r summary-plot, message=FALSE}
+netflix_summary_plot <- netflix_clean %>%
+  group_by(country, type) %>%
+  summarise(avg_duration = mean(duration_num, na.rm = TRUE), count = n()) %>%
+  filter(count > 20)  # Filter for meaningful sample size
+
+# Map bright colors to categories
+plot_ly(netflix_summary_plot, x = ~country, y = ~avg_duration, color = ~type,
+        type = 'bar',
+        color_discrete_map = c("Movie" = "tomato", "TV Show" = "limegreen")) %>%
+  layout(
+    title = list(
+      text = "Average Movie Duration by Country and Type",
+      y = 0.95, x = 0.5,
+      xanchor = "center", yanchor = "top"
+    ),
+    xaxis = list(title = "Country", automargin = TRUE),
+    yaxis = list(title = "Average Duration (minutes)", automargin = TRUE),
+    margin = list(t = 100, b = 100)  # increase top/bottom margin to avoid overlap
+  )
+```
+## Conclusion
+
+This analysis of the Netflix Movies & TV Shows dataset demonstrates key data analysis techniques, including univariate, bivariate, and multivariate exploration, data wrangling, sampling, and interactive visualization. The findings highlight trends in content type, release year, country distribution, and movie duration, while also confirming statistical concepts like the Central Limit Theorem. Overall, the project provides a complete and clear demonstration of a data analysis workflow from import and cleaning to interpretation and visualization.
+
