@@ -52,7 +52,7 @@ library(ggplot2)
 ```
 ```{r data_import}
 # Load dataset
-netflix <- read_csv("C:/Users/sharm/Downloads/archive (2)/netflix_titles.csv")
+netflix <- read_csv("data/netflix_titles.csv")
 
 # Clean dataset
 netflix_clean <- netflix %>%
